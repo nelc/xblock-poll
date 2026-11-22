@@ -169,6 +169,16 @@ li.poll-result .poll-image {
     padding: 5px 0;
 }
 
+.survey-table td.survey-text-option{
+    text-align: start;
+    padding: 8px;
+}
+
+.survey-text-option .survey-text-answer{
+    width: 100%;
+    box-sizing: border-box;
+}
+
 .survey-table td, .survey-table th {
     border: 1px solid #CCC;
     border-top: 0;
@@ -339,6 +349,12 @@ th.survey-answer {
         padding: 0 10px;
         margin-bottom: 10px;
         border-radius: 5px;
+    }
+
+    .survey-table .survey-text-option{
+        display: block;
+        border: 0;
+        padding: 0 0 10px;
     }
 
     .survey-table .survey-option:last-child{

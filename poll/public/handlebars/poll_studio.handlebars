@@ -12,6 +12,14 @@
             {{#if_eq noun "question"}}{{gettext "Question"}}{{/if_eq}}
         </label>
         <input class="input setting-input" name="{{noun}}-label-{{key}}" id="{{noun}}-label-{{key}}" value="{{text}}" type="text" /><br />
+        {{#if_eq noun "question"}}
+        <label class="label setting-label" for="{{noun}}-type-{{key}}">{{gettext "Answer type"}}</label>
+        <select class="input setting-input" name="{{noun}}-type-{{key}}" id="{{noun}}-type-{{key}}">
+            <option value="choice">{{gettext "Choice (uses the answers below)"}}</option>
+            <option value="short_text" {{#if_eq type "short_text"}}selected{{/if_eq}}>{{gettext "Short answer"}}</option>
+            <option value="long_text" {{#if_eq type "long_text"}}selected{{/if_eq}}>{{gettext "Long answer"}}</option>
+        </select><br />
+        {{/if_eq}}
         {{#if image}}
         <label class="label setting-label" for="{{noun}}-img-{{key}}">{{gettext "Image URL"}}</label>
         <input class="input setting-input" name="{{noun}}-img-{{key}}" id="{{noun}}-img-{{key}}" value="{{img}}" type="text" /><br />
