@@ -370,3 +370,15 @@ msgid ""
 "                You have used %(submissions_count_s)s out of %(max_submissions_s)s submissions.\n"
 "            "
 msgstr ""
+
+#: poll/poll.py
+msgid "Question {item} has an unknown type."
+msgstr "نوع السؤال {item} غير معروف."
+
+#: poll/poll.py
+msgid "The answer to question '{question_key}' must be text."
+msgstr "يجب أن تكون الإجابة عن السؤال '{question_key}' نصًا."
+
+#: poll/poll.py
+msgid "Your answer is too long. The maximum is {max_length} characters."
+msgstr "إجابتك طويلة جدًا. الحد الأقصى {max_length} حرفًا."

@@ -6,6 +6,7 @@
         <h3 class="poll-header">{{block_name}}</h3>
         <form>
             <table class="survey-table" role="presentation">
+                {% if has_choice_questions %}
                 <thead role="presentation">
                   <tr role="group">
                       <td></td>
@@ -14,6 +15,7 @@
                       {% endfor %}
                   </tr>
                 </thead>
+                {% endif %}
             {% for key, question in questions %}
                 <tr class="survey-row" role="group" aria-labelledby="poll-{{block_id}}-{{key}}">
                     <th role="presentation" id="poll-{{block_id}}-{{key}}" class="survey-question" scope="row">
@@ -24,6 +26,19 @@
                         {% endif %}
                       {{question.label|safe}}
                     </th>
+                {% if question.type == 'short_text' or question.type == 'long_text' %}
+                    <td class="survey-text-option" colspan="{{answers|length}}">
+                        {% if question.type == 'short_text' %}
+                            <input type="text" class="survey-text-answer" name="{{key}}" id="{{usage_id}}-{{key}}-text"
+                                   maxlength="{{question.max_length}}" value="{{question.choice|default_if_none:''}}"
+                                   aria-labelledby="poll-{{block_id}}-{{key}}"/>
+                        {% else %}
+                            <textarea class="survey-text-answer" name="{{key}}" id="{{usage_id}}-{{key}}-text" rows="4"
+                                      maxlength="{{question.max_length}}"
+                                      aria-labelledby="poll-{{block_id}}-{{key}}">{{question.choice|default_if_none:''}}</textarea>
+                        {% endif %}
+                    </td>
+                {% else %}
                 {% for answer, label in answers %}
                     <td role="presentation" class="survey-option" headers="poll-{{block_id}}-{{key}} poll-{{block_id}}-{{answer}}">
                         {% with answer_count=forloop.counter %}
@@ -47,6 +62,7 @@
                         {% endwith %}
                     </td>
                 {% endfor %}
+                {% endif %}
                 </tr>
             {% endfor %}
             </table>

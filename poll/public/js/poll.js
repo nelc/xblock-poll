@@ -12,6 +12,7 @@ function PollUtil (runtime, element, pollType) {
         this.votedUrl = runtime.handlerUrl(element, 'student_voted');
         this.submit = $('button.submit', element);
         this.answers = $('input[type=radio]', element);
+        this.textAnswers = $('.survey-text-answer', element);
         this.errorMessage = $('.error-message', element);
 
         PollCommonUtil.init(Handlebars);
@@ -72,7 +73,7 @@ function PollUtil (runtime, element, pollType) {
 
         // If the user is unable to vote, disable input.
         if (! $('div.poll-block', element).data('can-vote')) {
-            $('input', element).attr('disabled', true);
+            $('input, textarea', element).attr('disabled', true);
             return
         }
         self.answers.bind("change.enableSubmit", self.verifyAll);
@@ -107,6 +108,11 @@ function PollUtil (runtime, element, pollType) {
         self.answers.each(function(index, el) {
             el = $(el);
             choices[el.prop('name')] = $(self.checkedElement(el), element).val();
+        });
+        // Text questions are optional: a blank answer is sent as an empty string.
+        self.textAnswers.each(function(index, el) {
+            el = $(el);
+            choices[el.prop('name')] = el.val();
         });
         return choices;
     };
@@ -150,8 +156,8 @@ function PollUtil (runtime, element, pollType) {
             $('.poll-feedback-container', element).removeClass('poll-hidden');
             if (!can_vote) {
                 // Disable all types of input within the element,
-                // Radio button choices and the submit button.
-                $('input', element).attr('disabled', true);
+                // Radio button choices, text answers and the submit button.
+                $('input, textarea', element).attr('disabled', true);
             } else {
                 // Enable the submit button.
                 self.enableSubmit();

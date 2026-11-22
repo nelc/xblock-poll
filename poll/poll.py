@@ -60,6 +60,17 @@ try:
 except ImportError:
     HAS_STATIC_REPLACE = False
 
+# Survey question types. A question without a 'type' key is a 'choice' question.
+SURVEY_QUESTION_TYPES = ('choice', 'short_text', 'long_text')
+SURVEY_TEXT_MAX_LENGTHS = {'short_text': 255, 'long_text': 5000}
+
+
+def survey_question_type(question):
+    """
+    Return the type of a survey question's value dict ('choice' when unset).
+    """
+    return (question or {}).get('type') or 'choice'
+
 
 class ResourceMixin(XBlockWithSettingsMixin, ThemableXBlockMixin):
     loader = ResourceLoader(__name__)
@@ -287,6 +298,11 @@ class PollBase(XBlock, ResourceMixin, PublishEventMixin):
         xblock_settings = settings_service.get_settings_bucket(self)
         return xblock_settings.get('IMG_ALT_MANDATORY', True)
 
+    def gather_item_details(self, item, key, item_data, result):
+        """
+        Hook for blocks that store extra details on image-capable items (poll answers, survey questions).
+        """
+
     def gather_items(self, data, result, noun, field, image=True):  # pylint: disable=too-many-positional-arguments
         """
         Gathers a set of label-img pairs from a data dict and puts them in order.
@@ -354,7 +370,9 @@ class PollBase(XBlock, ResourceMixin, PublishEventMixin):
                     )
                 )
             if image:
-                items.append((key, {'label': label, 'img': image_link, 'img_alt': image_alt}))
+                item_data = {'label': label, 'img': image_link, 'img_alt': image_alt}
+                self.gather_item_details(item, key, item_data, result)
+                items.append((key, item_data))
             else:
                 items.append([key, label])
 
@@ -917,6 +935,45 @@ class SurveyBlock(PollBase, CSVExportMixin):
     choices = Dict(help=_("The user's answers"), scope=Scope.user_state)
     event_namespace = 'xblock.survey'
 
+    def gather_item_details(self, item, key, item_data, result):
+        """
+        Validate a survey question's type from studio data. Only text types are stored,
+        so choice questions keep the shape they had before question types existed.
+        """
+        question_type = item.get('type') or 'choice'
+        if question_type not in SURVEY_QUESTION_TYPES:
+            result['success'] = False
+            result['errors'].append(self.ugettext("Question {item} has an unknown type.").format(item=key))
+        elif question_type != 'choice':
+            item_data['type'] = question_type
+
+    def clean_text_answer(self, key, value, question_type, result):
+        """
+        Validate a free-text answer (blank is allowed) and return it stripped.
+        """
+        if not isinstance(value, str):
+            result['success'] = False
+            result['errors'].append(
+                self.ugettext("The answer to question '{question_key}' must be text.").format(question_key=key)
+            )
+            return value
+        value = value.strip()
+        max_length = SURVEY_TEXT_MAX_LENGTHS[question_type]
+        if len(value) > max_length:
+            result['success'] = False
+            result['errors'].append(
+                self.ugettext("Your answer is too long. The maximum is {max_length} characters.").format(
+                    max_length=max_length)
+            )
+        return value
+
+    def choice_question_keys(self):
+        """
+        Keys of the questions answered by picking one of the shared answers.
+        Text questions are never tallied.
+        """
+        return [key for key, value in self.questions if survey_question_type(value) == 'choice']
+
     def author_view(self, context=None):
         """
         Used to hide CSV export in Studio view
@@ -943,6 +1000,7 @@ class SurveyBlock(PollBase, CSVExportMixin):
             'answers': self.answers,
             'js_template': js_template,
             'questions': self.renderable_answers(self.questions, choices),
+            'has_choice_questions': bool(self.choice_question_keys()),
             'private_results': self.private_results,
             'any_img': self.any_image(self.questions),
             # Mustache is treating an empty string as true.
@@ -1001,9 +1059,12 @@ class SurveyBlock(PollBase, CSVExportMixin):
         in the case of private_results.
         """
         choices = choices or {}
+        question_types = {key: survey_question_type(value) for key, value in questions}
         markdown_questions = self.markdown_items(questions)
         for key, value in markdown_questions:
             value['choice'] = choices.get(key, None)
+            value['type'] = question_types[key]
+            value['max_length'] = SURVEY_TEXT_MAX_LENGTHS.get(value['type'])
         return markdown_questions
 
     def studio_view(self, context=None):
@@ -1033,7 +1094,10 @@ class SurveyBlock(PollBase, CSVExportMixin):
         Handlebars template can use.
         """
         tally = []
-        questions = OrderedDict(self.markdown_items(self.questions))
+        choice_keys = self.choice_question_keys()
+        questions = OrderedDict(
+            (key, value) for key, value in self.markdown_items(self.questions) if key in choice_keys
+        )
         default_answers = OrderedDict([(answer, 0) for answer, __ in self.answers])
         choices = self.choices or {}
         total = 0
@@ -1089,11 +1153,11 @@ class SurveyBlock(PollBase, CSVExportMixin):
         we just clean it up on first access within the LMS, in case the studio
         has made changes to the answers.
         """
-        questions = dict(self.questions)
+        questions = self.choice_question_keys()
         answers = dict(self.answers)
         # pylint: disable=bad-option-value, consider-iterating-dictionary
         default_answers = {answer: 0 for answer in answers.keys()}
-        for key in questions.keys():  # pylint: disable=bad-option-value, consider-iterating-dictionary
+        for key in questions:
             if key not in self.tally:
                 self.tally[key] = dict(default_answers)
             else:
@@ -1121,11 +1185,11 @@ class SurveyBlock(PollBase, CSVExportMixin):
         This means a user's old votes may still count indefinitely after a
         change, should they never revisit.
         """
-        questions = dict(self.questions)
+        questions = self.choice_question_keys()
         answers = dict(self.answers)
         for key, value in self.choices.items():
-            if key in questions:
-                if value in answers:
+            if key in questions and key in self.tally:
+                if value in answers and value in self.tally[key]:
                     self.tally[key][value] -= 1
         self.choices = None
         self.save()
@@ -1141,8 +1205,12 @@ class SurveyBlock(PollBase, CSVExportMixin):
         if sorted(questions.keys()) != sorted(self.choices.keys()):
             self.remove_vote()
             return None
-        for value in self.choices.values():
-            if value not in answers:
+        for key, value in self.choices.items():
+            if survey_question_type(questions[key]) == 'choice':
+                valid = value in answers
+            else:
+                valid = isinstance(value, str)
+            if not valid:
                 self.remove_vote()
                 return None
         return self.choices
@@ -1185,7 +1253,7 @@ class SurveyBlock(PollBase, CSVExportMixin):
             'items': [
                 {
                     'key': key, 'text': value['label'], 'img': value['img'], 'img_alt': value.get('img_alt'),
-                    'noun': 'question', 'image': True,
+                    'type': survey_question_type(value), 'noun': 'question', 'image': True,
                 }
                 for key, value in self.questions
             ]
@@ -1222,6 +1290,10 @@ class SurveyBlock(PollBase, CSVExportMixin):
 
         # Make sure the answer values are sane.
         for key, value in data.items():
+            question_type = survey_question_type(questions.get(key))
+            if question_type != 'choice':
+                data[key] = self.clean_text_answer(key, value, question_type, result)
+                continue
             if value not in answers:
                 result['success'] = False
                 result['errors'].append(
@@ -1240,11 +1312,19 @@ class SurveyBlock(PollBase, CSVExportMixin):
             self.remove_vote()
         self.choices = data
         self.clean_tally()
+        choice_keys = self.choice_question_keys()
         for key, value in self.choices.items():
-            self.tally[key][value] += 1
+            if key in choice_keys:
+                self.tally[key][value] += 1
         self.submissions_count += 1
 
-        self.send_vote_event({'choices': self.choices})
+        # Free-text answers stay out of the tracking event; they are read through the exports only.
+        self.send_vote_event({
+            'choices': {key: value for key, value in self.choices.items() if key in choice_keys},
+            'answered_text_questions': sorted(
+                key for key, value in self.choices.items() if key not in choice_keys and value
+            ),
+        })
         result['can_vote'] = self.can_vote()
         result['submissions_count'] = self.submissions_count
         result['max_submissions'] = self.max_submissions
@@ -1348,8 +1428,11 @@ class SurveyBlock(PollBase, CSVExportMixin):
                 for q in sorted_questions:
                     choices = state.get('choices')
                     if choices:
-                        choice = choices[q[0]]
-                        row.append(answers_dict[choice])
+                        choice = choices.get(q[0])
+                        if survey_question_type(q[1]) != 'choice':
+                            row.append(choice or '')
+                        else:
+                            row.append(answers_dict.get(choice, ''))
                 data[sm.student.id] = row
         return [header_row + questions] + list(data.values())
 
@@ -1386,7 +1469,10 @@ class SurveyBlock(PollBase, CSVExportMixin):
 
                 question = questions_dict.get(question_id, {}).get('label',
                                                                    "[Removed Survey Question {}]".format(question_id))
-                answer = answers_dict.get(answer_id) or "[Removed Survey Option {}]".format(answer_id)
+                if question_id in questions_dict and survey_question_type(questions_dict[question_id]) != 'choice':
+                    answer = answer_id
+                else:
+                    answer = answers_dict.get(answer_id) or "[Removed Survey Option {}]".format(answer_id)
                 report = {
                     self.ugettext('Question'): question,
                     self.ugettext('Answer'): answer,

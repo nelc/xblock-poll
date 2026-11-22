@@ -193,6 +193,9 @@ function PollEditUtil(runtime, element, pollType) {
         } else if (name.indexOf('img-') == 0) {
             name = name.replace('img-', '');
             key = 'img'
+        } else if (name.indexOf('type-') == 0) {
+            name = name.replace('type-', '');
+            key = 'type'
         } else if (name.indexOf('label-') == 0) {
             name = name.replace('label-', '');
         }
@@ -230,7 +233,7 @@ function PollEditUtil(runtime, element, pollType) {
             var field = gatherings[gathering]['field'];
             var prefix = gatherings[gathering]['prefix'];
             data[field] = [];
-            $('#poll-form input', element).each(function () {
+            $('#poll-form input, #poll-form select', element).each(function () {
                 self.gather(this, tracker, data, prefix, field)
             });
         }
